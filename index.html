@@ -667,14 +667,45 @@
         }
 
         els.submitState.textContent = "分析中";
-        const parsedMessages = parseConversation(raw);
-        const hard = analyzeHardRule(raw, parsedMessages);
-        const result = hard || scoreByRules(parsedMessages);
+        analyzeRemote(raw).catch(() => {
+          const parsedMessages = parseConversation(raw);
+          const hard = analyzeHardRule(raw, parsedMessages);
+          const result = hard || scoreByRules(parsedMessages);
+          els.error.innerHTML =
+            '<div class="error-banner">服务端 DeepSeek 分析暂不可用，当前已切换到本地规则兜底结果。</div>';
+          applyAnalysisResult(parsedMessages, result);
+        });
+      }
+
+      async function analyzeRemote(raw) {
+        const response = await fetch("/api/analyze", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            conversationText: raw
+          })
+        });
+
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || "Analyze failed");
+        }
+
+        if (payload.source === "deepseek") {
+          els.error.innerHTML =
+            '<div class="error-banner" style="background:#eef8f3;border-color:#cce7da;color:#197b55;">当前结果由 DeepSeek 按规则说明 v1.0 生成。</div>';
+        }
+
+        applyAnalysisResult(payload.parsedMessages, payload);
+      }
+
+      function applyAnalysisResult(parsedMessages, result) {
         state.currentAnalysis = { parsedMessages, result };
         state.reviewChoice = null;
         state.stats.total += 1;
         persistStats();
-
         renderParsedMessages(parsedMessages);
         renderResult(result);
         enableReview(true);
