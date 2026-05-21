@@ -1,0 +1,997 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SOP 未解决原因自动分析 MVP</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f5f7f6;
+        --panel: #ffffff;
+        --ink: #17201b;
+        --muted: #66736c;
+        --line: #dce3df;
+        --soft: #eef3f0;
+        --green: #197b55;
+        --red: #c64235;
+        --amber: #9c6b12;
+        --blue: #256f96;
+        --shadow: 0 16px 44px rgba(23, 32, 27, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      button,
+      textarea,
+      input,
+      select {
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+
+      .app-shell {
+        min-height: 100vh;
+        padding: 24px 24px 96px;
+      }
+
+      .topbar {
+        align-items: center;
+        display: flex;
+        gap: 20px;
+        justify-content: space-between;
+        margin: 0 auto 20px;
+        max-width: 1480px;
+      }
+
+      .eyebrow {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0;
+        margin: 0 0 6px;
+      }
+
+      h1,
+      h2,
+      h3 {
+        letter-spacing: 0;
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 24px;
+        line-height: 1.2;
+      }
+
+      h2 {
+        font-size: 18px;
+      }
+
+      .metrics {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(3, minmax(128px, 1fr));
+      }
+
+      .metric,
+      .panel,
+      .info-tile,
+      .reason-card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+
+      .metric {
+        padding: 10px 12px;
+      }
+
+      .metric span,
+      .status-label,
+      .probability span,
+      .info-tile span,
+      .section-title small {
+        color: var(--muted);
+        display: block;
+        font-size: 12px;
+      }
+
+      .metric strong {
+        display: block;
+        font-size: 18px;
+        margin-top: 4px;
+      }
+
+      .workspace {
+        display: grid;
+        gap: 20px;
+        grid-template-columns: minmax(360px, 0.95fr) minmax(480px, 1.25fr);
+        margin: 0 auto;
+        max-width: 1480px;
+      }
+
+      .panel {
+        box-shadow: var(--shadow);
+        min-height: calc(100vh - 178px);
+        padding: 18px;
+      }
+
+      .panel-head {
+        align-items: center;
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 14px;
+      }
+
+      .conversation-input {
+        background: #fbfcfb;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        color: var(--ink);
+        display: block;
+        line-height: 1.55;
+        min-height: 240px;
+        padding: 14px;
+        resize: vertical;
+        width: 100%;
+      }
+
+      .conversation-input:focus,
+      .review-controls input:focus,
+      .review-controls select:focus {
+        border-color: var(--green);
+        outline: 2px solid rgba(25, 123, 85, 0.14);
+      }
+
+      .input-meta {
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 6px;
+        text-align: right;
+      }
+
+      .primary-button,
+      .ghost-button,
+      .choice-button {
+        align-items: center;
+        border-radius: 8px;
+        display: inline-flex;
+        font-weight: 700;
+        justify-content: center;
+        min-height: 40px;
+        padding: 0 14px;
+      }
+
+      .primary-button {
+        background: var(--green);
+        border: 1px solid var(--green);
+        color: #ffffff;
+        margin-top: 12px;
+        width: 100%;
+      }
+
+      .primary-button.compact {
+        margin-top: 0;
+        min-width: 82px;
+        width: auto;
+      }
+
+      .ghost-button {
+        background: var(--soft);
+        border: 1px solid var(--line);
+        color: var(--ink);
+        text-decoration: none;
+      }
+
+      .preview-block {
+        border-top: 1px solid var(--line);
+        margin-top: 18px;
+        padding-top: 16px;
+      }
+
+      .section-title {
+        align-items: center;
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 12px;
+      }
+
+      .section-title span {
+        font-size: 14px;
+        font-weight: 800;
+      }
+
+      .empty-state,
+      .empty-result {
+        align-items: center;
+        background: #fbfcfb;
+        border: 1px dashed var(--line);
+        border-radius: 8px;
+        color: var(--muted);
+        display: flex;
+        justify-content: center;
+        min-height: 150px;
+        padding: 18px;
+        text-align: center;
+      }
+
+      .empty-result {
+        flex-direction: column;
+        gap: 8px;
+        min-height: 360px;
+      }
+
+      .empty-result strong {
+        color: var(--ink);
+        font-size: 22px;
+      }
+
+      .dialogue-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        max-height: 420px;
+        overflow: auto;
+        padding-right: 4px;
+      }
+
+      .bubble {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        line-height: 1.55;
+        padding: 10px 12px;
+      }
+
+      .bubble span {
+        color: var(--muted);
+        display: block;
+        font-size: 12px;
+        font-weight: 800;
+        margin-bottom: 4px;
+      }
+
+      .bubble p {
+        margin: 0;
+        white-space: pre-wrap;
+      }
+
+      .bubble.driver {
+        background: #edf6f2;
+        border-color: #cfe3d9;
+      }
+
+      .bubble.bot {
+        background: #f7f9fb;
+      }
+
+      .result-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+
+      .status-card {
+        align-items: center;
+        border-radius: 8px;
+        display: flex;
+        justify-content: space-between;
+        padding: 16px;
+      }
+
+      .status-card strong {
+        display: block;
+        font-size: 30px;
+        line-height: 1.1;
+        margin-top: 6px;
+      }
+
+      .status-unresolved {
+        background: #fff1ef;
+        border: 1px solid #f0c7c1;
+      }
+
+      .status-resolved {
+        background: #eef8f3;
+        border: 1px solid #cce7da;
+      }
+
+      .status-unknown {
+        background: #fff8e9;
+        border: 1px solid #ead9ae;
+      }
+
+      .probability {
+        text-align: right;
+      }
+
+      .probability b {
+        display: block;
+        font-size: 34px;
+        line-height: 1.1;
+        margin-top: 4px;
+      }
+
+      .summary-grid {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .info-tile {
+        min-height: 74px;
+        padding: 12px;
+      }
+
+      .info-tile.wide {
+        grid-column: 1 / -1;
+      }
+
+      .info-tile strong {
+        display: block;
+        font-size: 15px;
+        line-height: 1.45;
+        margin-top: 6px;
+      }
+
+      .reason-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .reason-card {
+        padding: 12px;
+      }
+
+      .reason-card h3 {
+        font-size: 15px;
+        margin: 0 0 6px;
+      }
+
+      .reason-card p,
+      .reason-card ul,
+      .logic-block ol {
+        color: #34423a;
+        line-height: 1.55;
+        margin: 0;
+      }
+
+      .reason-card ul,
+      .logic-block ol {
+        padding-left: 20px;
+      }
+
+      .suggestion {
+        background: var(--soft);
+        border-radius: 8px;
+        color: #274139;
+        font-size: 13px;
+        margin-top: 10px;
+        padding: 9px 10px;
+      }
+
+      .logic-block {
+        border-top: 1px solid var(--line);
+        padding-top: 12px;
+      }
+
+      .review-bar {
+        align-items: center;
+        background: rgba(255, 255, 255, 0.94);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        bottom: 18px;
+        box-shadow: var(--shadow);
+        display: grid;
+        gap: 14px;
+        grid-template-columns: 290px 1fr auto;
+        left: 24px;
+        margin: 0 auto;
+        max-width: 1480px;
+        padding: 12px;
+        position: fixed;
+        right: 24px;
+      }
+
+      .review-bar strong,
+      .review-bar span {
+        display: block;
+      }
+
+      .review-bar span {
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 3px;
+      }
+
+      .review-controls {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: auto auto minmax(150px, 0.8fr) minmax(180px, 1fr) minmax(180px, 1.1fr) auto;
+      }
+
+      .choice-button {
+        background: #ffffff;
+        border: 1px solid var(--line);
+        color: var(--ink);
+      }
+
+      .choice-button.selected {
+        background: #eef8f3;
+        border-color: var(--green);
+        color: var(--green);
+      }
+
+      .choice-button.selected.danger {
+        background: #fff1ef;
+        border-color: var(--red);
+        color: var(--red);
+      }
+
+      .review-controls input,
+      .review-controls select {
+        background: #ffffff;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        min-height: 40px;
+        padding: 0 12px;
+        width: 100%;
+      }
+
+      .saved-text {
+        color: var(--green) !important;
+        font-weight: 800;
+        white-space: nowrap;
+      }
+
+      .error-banner {
+        background: #fff1ef;
+        border: 1px solid #f0c7c1;
+        border-radius: 8px;
+        color: var(--red);
+        font-weight: 700;
+        margin-bottom: 12px;
+        padding: 10px 12px;
+      }
+
+      @media (max-width: 980px) {
+        .app-shell {
+          padding: 16px 16px 190px;
+        }
+
+        .topbar,
+        .workspace {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .metrics {
+          width: 100%;
+        }
+
+        .panel {
+          min-height: auto;
+          width: 100%;
+        }
+
+        .review-bar {
+          grid-template-columns: 1fr;
+          left: 16px;
+          right: 16px;
+        }
+
+        .review-controls {
+          grid-template-columns: 1fr 1fr;
+        }
+
+        .review-controls input,
+        .review-controls select,
+        .review-controls .compact {
+          grid-column: 1 / -1;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">判责场景 · 静态 HTML 验证版</p>
+          <h1>SOP 未解决原因自动分析</h1>
+        </div>
+        <div class="metrics" aria-label="分析统计">
+          <div class="metric"><span>今日分析量</span><strong id="todayCount">0</strong></div>
+          <div class="metric"><span>人工确认准确率</span><strong id="accuracy">-</strong></div>
+          <div class="metric"><span>提交入口</span><strong id="submitState">就绪</strong></div>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <section class="panel input-panel" aria-label="原始会话输入">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Step 1</p>
+              <h2>单条会话输入</h2>
+            </div>
+            <button class="ghost-button" type="button" id="sampleBtn">填入示例</button>
+          </div>
+
+          <textarea
+            class="conversation-input"
+            id="conversationInput"
+            maxlength="60000"
+            placeholder="粘贴一条历史会话，例如：
+智能客服:&quot;Hi，欢迎使用在线客服...&quot;
+司机:&quot;我不认可判责结果，想再次申诉&quot;"
+          ></textarea>
+          <div class="input-meta"><span id="charCount">0</span>/60000</div>
+          <button class="primary-button" type="button" id="analyzeBtn">提交并分析</button>
+
+          <div class="preview-block">
+            <div class="section-title">
+              <span>对话式解析预览</span>
+              <small id="messageCount">0 条消息</small>
+            </div>
+            <div id="dialoguePreview" class="empty-state">提交后会先把原始日志和 JSON 卡片解析成可读对话。</div>
+          </div>
+        </section>
+
+        <section class="panel result-panel" aria-label="分析结果">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Step 2</p>
+              <h2>分析结论</h2>
+            </div>
+            <button class="ghost-button" type="button" id="resetBtn">重置</button>
+          </div>
+          <div id="errorBox"></div>
+          <div id="resultPanel" class="empty-result">
+            <strong>等待提交</strong>
+            <span>右侧将展示解决状态、概率、主因和原因卡片。</span>
+          </div>
+        </section>
+      </section>
+
+      <footer class="review-bar" aria-label="人工打标区">
+        <div>
+          <p class="eyebrow">Step 3</p>
+          <strong>人工确认</strong>
+          <span id="reviewStats">总分析 0 条，已确认 0 条，正确 0 条，错误 0 条</span>
+        </div>
+        <div class="review-controls">
+          <button class="choice-button" id="correctBtn" type="button" disabled>判断正确</button>
+          <button class="choice-button" id="wrongBtn" type="button" disabled>判断错误</button>
+          <select id="manualStatus" aria-label="人工修正解决状态" disabled>
+            <option value="无法确定">人工：无法确定</option>
+            <option value="已解决">人工：已解决</option>
+            <option value="未解决">人工：未解决</option>
+          </select>
+          <select id="manualReason" aria-label="人工修正主因" disabled>
+            <option value="">人工主因：待补充</option>
+            <option value="【司机】信息缺失不足">【司机】信息缺失不足</option>
+            <option value="【司机】自主操作受阻">【司机】自主操作受阻</option>
+            <option value="【司机】规则/策略解释不足">【司机】规则/策略解释不足</option>
+            <option value="【司机】场景链路缺失">【司机】场景链路缺失</option>
+            <option value="【司机】个人行为（习惯抓人工）">【司机】个人行为（习惯抓人工）</option>
+            <option value="机器人能力问题">机器人能力问题</option>
+          </select>
+          <input id="commentInput" placeholder="备注：可写人工修正原因" disabled />
+          <button class="primary-button compact" id="saveReviewBtn" type="button" disabled>保存</button>
+        </div>
+        <span id="saveState" class="saved-text"></span>
+      </footer>
+    </main>
+
+    <script>
+      const sampleInput = `智能客服:"{\\"type\\":\\"recommendCard\\",\\"data\\":{\\"tips\\":\\"您可以这样问我：\\",\\"list\\":[{\\"title\\":\\"我不认可违规处置结果？\\"},{\\"title\\":\\"我想了解具体的判罚规则和违规影响\\"}]}}"
+智能客服:"Hi，欢迎使用在线客服，请用简短的话描述你的问题"
+司机:"5月2号有一个未按时到达乘客乘车点，是因为严重堵车无法掉头，导致了没有接到乘客。这是道路拥堵又是为了安全导致不是故意行为。再次申诉"
+智能客服:"{\\"type\\":\\"agentCardList\\",\\"data\\":{\\"content\\":\\"师傅您好，请确认您要咨询的违规信息\\",\\"buttons\\":[{\\"name\\":\\"以上均不是\\"}],\\"cardList\\":[{\\"cardType\\":\\"violation\\",\\"channelBusinessId\\":\\"G1631590235\\",\\"disposeReasonName\\":\\"未接乘客\\",\\"complaintStatus\\":0,\\"startAddress\\":\\"上善花园酒店\\",\\"endAddress\\":\\"锦江都城酒店\\"}]}}"
+司机:"{\\"type\\":\\"violation\\",\\"data\\":{\\"channelBusinessId\\":\\"G1631590235\\",\\"disposeReasonName\\":\\"未接乘客\\",\\"complaintStatus\\":0}}"
+智能客服:"{\\"type\\":\\"imRichText\\",\\"data\\":{\\"content\\":\\"师傅，被判责心里肯定不好受，您先别着急！您提交的违规申诉平台正在努力审核呢，平台规定会在 3 个工作日内完成，等审核结果出来，就会通过 APP 给您及时发通知。\\"}}"`;
+
+      const state = {
+        currentAnalysis: null,
+        reviewChoice: null,
+        stats: JSON.parse(localStorage.getItem("sop-static-stats") || '{"total":0,"reviewed":0,"correct":0,"incorrect":0}')
+      };
+
+      const els = {
+        input: document.getElementById("conversationInput"),
+        charCount: document.getElementById("charCount"),
+        sampleBtn: document.getElementById("sampleBtn"),
+        analyzeBtn: document.getElementById("analyzeBtn"),
+        resetBtn: document.getElementById("resetBtn"),
+        submitState: document.getElementById("submitState"),
+        todayCount: document.getElementById("todayCount"),
+        accuracy: document.getElementById("accuracy"),
+        messageCount: document.getElementById("messageCount"),
+        preview: document.getElementById("dialoguePreview"),
+        result: document.getElementById("resultPanel"),
+        error: document.getElementById("errorBox"),
+        reviewStats: document.getElementById("reviewStats"),
+        correctBtn: document.getElementById("correctBtn"),
+        wrongBtn: document.getElementById("wrongBtn"),
+        manualStatus: document.getElementById("manualStatus"),
+        manualReason: document.getElementById("manualReason"),
+        comment: document.getElementById("commentInput"),
+        saveReviewBtn: document.getElementById("saveReviewBtn"),
+        saveState: document.getElementById("saveState")
+      };
+
+      els.sampleBtn.addEventListener("click", () => {
+        els.input.value = sampleInput;
+        updateCharCount();
+      });
+
+      els.input.addEventListener("input", updateCharCount);
+      els.analyzeBtn.addEventListener("click", analyze);
+      els.resetBtn.addEventListener("click", resetAll);
+      els.correctBtn.addEventListener("click", () => chooseReview(true));
+      els.wrongBtn.addEventListener("click", () => chooseReview(false));
+      els.saveReviewBtn.addEventListener("click", saveReview);
+
+      updateCharCount();
+      renderStats();
+
+      function updateCharCount() {
+        els.charCount.textContent = String(els.input.value.length);
+      }
+
+      function analyze() {
+        const raw = els.input.value.trim();
+        els.error.innerHTML = "";
+        els.saveState.textContent = "";
+
+        if (!raw) {
+          els.error.innerHTML = '<div class="error-banner">请输入单条历史会话后再提交分析。</div>';
+          return;
+        }
+
+        els.submitState.textContent = "分析中";
+        const parsedMessages = parseConversation(raw);
+        const hard = analyzeHardRule(raw, parsedMessages);
+        const result = hard || scoreByRules(parsedMessages);
+        state.currentAnalysis = { parsedMessages, result };
+        state.reviewChoice = null;
+        state.stats.total += 1;
+        persistStats();
+
+        renderParsedMessages(parsedMessages);
+        renderResult(result);
+        enableReview(true);
+        renderStats();
+        els.submitState.textContent = "就绪";
+      }
+
+      function parseConversation(input) {
+        const entries = [];
+        let current = null;
+        input.split(/\r?\n/).forEach((line) => {
+          const trimmed = line.trim();
+          if (!trimmed) return;
+          const match = trimmed.match(/^(智能客服|司机)\s*[:：]\s*(.*)$/);
+          if (match) {
+            if (current) entries.push(current);
+            current = {
+              speaker: match[1] === "司机" ? "driver" : "bot",
+              roleLabel: match[1],
+              content: match[2]
+            };
+          } else if (current) {
+            current.content += "\n" + trimmed;
+          } else {
+            current = { speaker: "unknown", roleLabel: "未知", content: trimmed };
+          }
+        });
+        if (current) entries.push(current);
+        return entries.map((entry, index) => {
+          const decoded = decodeContent(entry.content);
+          const structured = parseJson(decoded);
+          const rendered = structured ? renderStructured(structured, decoded) : { type: "plainText", text: decoded.trim() };
+          return {
+            id: "msg_" + (index + 1),
+            speaker: entry.speaker,
+            roleLabel: entry.roleLabel,
+            messageType: rendered.type,
+            rawContent: decoded,
+            text: rendered.text
+          };
+        });
+      }
+
+      function decodeContent(content) {
+        const trimmed = content.trim();
+        if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+          try {
+            return JSON.parse(trimmed);
+          } catch {
+            return trimmed.slice(1, -1);
+          }
+        }
+        return trimmed;
+      }
+
+      function parseJson(text) {
+        const trimmed = text.trim();
+        if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return null;
+        try {
+          return JSON.parse(trimmed);
+        } catch {
+          return null;
+        }
+      }
+
+      function renderStructured(value, raw) {
+        const type = value && value.type ? value.type : "unknown";
+        const data = value && value.data ? value.data : {};
+        if (type === "recommendCard") {
+          const titles = Array.isArray(data.list) ? data.list.map((item) => item.title).filter(Boolean) : [];
+          return { type, text: `${data.tips || "推荐问题"}${titles.length ? "\n推荐项：" + titles.join("；") : ""}` };
+        }
+        if (type === "agentCardList") {
+          const buttons = Array.isArray(data.buttons) ? data.buttons.map((item) => item.name).filter(Boolean) : [];
+          const cards = Array.isArray(data.cardList) ? data.cardList.map((card, i) => {
+            const status = card.complaintStatus === 0 ? "申诉处理中" : "已有处理结果";
+            return `违规卡片${i + 1}：${card.disposeReasonName || "未展示违规原因"}，订单${card.channelBusinessId || "未知订单"}，${card.startAddress || "起点未知"} 到 ${card.endAddress || "终点未知"}，${status}`;
+          }) : [];
+          return { type, text: [data.content || "请确认咨询信息", buttons.length ? "可选按钮：" + buttons.join("、") : "", ...cards].filter(Boolean).join("\n") };
+        }
+        if (type === "violation") {
+          const status = data.complaintStatus === 0 ? "申诉处理中" : "已有处理结果";
+          return { type, text: `司机选择违规记录：${data.disposeReasonName || "未展示违规原因"}，订单${data.channelBusinessId || "未知订单"}，状态：${status}` };
+        }
+        if (type === "imRichText") {
+          return { type, text: data.content || compact(raw) };
+        }
+        return { type: "unknownJson", text: `未知结构化消息：${type}\n${compact(raw)}` };
+      }
+
+      function analyzeHardRule(raw, messages) {
+        const combined = raw + "\n" + messages.map((m) => m.text).join("\n");
+        if (!/转人工|人工客服|人工服务|接入人工|联系人工|人工坐席|真人客服|我要人工/.test(combined)) return null;
+        const driverIntent = [...messages].reverse().find((m) => m.speaker === "driver" && m.text.trim());
+        const primaryReason = classifyReason(driverIntent ? driverIntent.text : "");
+        return {
+          resolvedStatus: "未解决",
+          unresolvedProbability: 100,
+          judgementDirection: "偏向未解决",
+          confidence: "高",
+          shortConclusion: "命中转人工，SOP 未自主解决司机问题。",
+          primaryReason,
+          secondaryReasons: [],
+          reasonJudgements: [{
+            reason: primaryReason,
+            judgement: judgementForReason(primaryReason),
+            evidence: ["会话命中转人工相关表达。", driverIntent ? "转人工前司机诉求：" + driverIntent.text : "转人工前司机诉求不完整。"],
+            suggestion: "回看转人工前司机未闭环诉求，补齐 SOP 回答或操作路径。"
+          }],
+          evidence: ["会话命中转人工相关表达，智能客服 SOP 未完成自主解决。"],
+          analysisLogic: ["转人工是 MVP 前置硬规则。", "命中后直接输出未解决，未解决概率固定为 100%。", "原因分类根据转人工前司机核心诉求归类。"]
+        };
+      }
+
+      function scoreByRules(messages) {
+        const driverText = messages.filter((m) => m.speaker === "driver").map((m) => m.text).join("\n");
+        const botText = messages.filter((m) => m.speaker === "bot").map((m) => m.text).join("\n");
+        const allText = messages.map((m) => m.text).join("\n");
+        let score = 50;
+        const evidence = [];
+        const logic = ["默认从 50% 未解决概率开始，根据规则说明 v1.0 做加减分。"];
+
+        const add = (points, reason) => { score += points; evidence.push(reason); logic.push("+" + points + "：" + reason); };
+        const subtract = (points, reason) => { score -= points; evidence.push(reason); logic.push("-" + points + "：" + reason); };
+
+        if (/不认可|再次申诉|复议|申诉|驳回|判责不对|不是故意|严重堵车/.test(driverText)) add(20, "司机表达不认可、再次申诉或复议诉求。");
+        if (/审核|3 个工作日|3个工作日|关注.*APP|等待/.test(botText) && !/规则|原因|为什么|依据|路径|入口|材料/.test(botText)) add(20, "机器人主要告知审核状态，未充分解释规则、原因或下一步路径。");
+        if (/无法|不能|找不到|打不开|提交不了|上传不了/.test(driverText)) add(15, "司机表达无法操作或路径受阻。");
+        if (/未展示违规原因|未知订单|缺失|不足/.test(allText)) add(10, "关键字段或上下文信息不足。");
+        if (/规则|原因|依据|影响|如何解除|如何申诉|下一步|入口|材料|审核结果/.test(botText)) subtract(20, "机器人提供规则解释或下一步信息。");
+        if (/请确认|违规卡片|司机选择违规记录/.test(botText)) subtract(15, "SOP 能识别并触发判责相关结构化卡片。");
+        if (!hasDriverFollowUpAfterLastBot(messages)) subtract(10, "机器人最终回复后司机没有继续追问。");
+
+        const probability = Math.max(5, Math.min(95, score));
+        const resolvedStatus = probability <= 30 ? "已解决" : probability >= 70 ? "未解决" : "无法确定";
+        const judgementDirection = probability <= 49 ? "偏向已解决" : "偏向未解决";
+        const primaryReason = classifyReason(driverText + "\n" + botText);
+        const shortConclusion = resolvedStatus === "未解决"
+          ? "司机核心诉求未充分闭环，偏向未解决。"
+          : resolvedStatus === "已解决"
+            ? "SOP 已回应核心诉求，偏向已解决。"
+            : judgementDirection === "偏向未解决"
+              ? "证据略偏未解决，需人工复核。"
+              : "证据略偏已解决，需人工复核。";
+
+        return {
+          resolvedStatus,
+          unresolvedProbability: probability,
+          judgementDirection,
+          confidence: probability >= 70 || probability <= 30 ? "中" : "低",
+          shortConclusion,
+          primaryReason,
+          secondaryReasons: [],
+          reasonJudgements: [{
+            reason: primaryReason,
+            judgement: judgementForReason(primaryReason),
+            evidence: evidence.slice(0, 3),
+            suggestion: suggestionForReason(primaryReason)
+          }],
+          evidence: evidence.slice(0, 6),
+          analysisLogic: logic
+        };
+      }
+
+      function classifyReason(text) {
+        if (/人工|真人/.test(text) && !/规则|申诉|违规|判责|原因|无法|找不到/.test(text)) return "【司机】个人行为（习惯抓人工）";
+        if (/无法|不能|找不到|打不开|提交不了|上传不了|入口|按钮|页面|操作/.test(text)) return "【司机】自主操作受阻";
+        if (/不知道|没说|没看到|查询不到|信息|字段|订单|时间|缺失|不足/.test(text)) return "【司机】信息缺失不足";
+        if (/下一步|再次申诉|补充材料|审核|流程|链路|路径|怎么处理/.test(text)) return "【司机】场景链路缺失";
+        if (/不认可|违规|判责|处罚|规则|策略|申诉|驳回|扣分|扣钱|为什么|严重堵车|非故意/.test(text)) return "【司机】规则/策略解释不足";
+        if (/识别|匹配|答非所问|听不懂|机器人/.test(text)) return "机器人能力问题";
+        return "【司机】规则/策略解释不足";
+      }
+
+      function judgementForReason(reason) {
+        return {
+          "【司机】信息缺失不足": "司机缺少理解判责结果所需的关键信息。",
+          "【司机】自主操作受阻": "司机知道诉求方向，但无法完成自助操作。",
+          "【司机】规则/策略解释不足": "司机对判责规则、处置依据或申诉结论仍不理解或不认可。",
+          "【司机】场景链路缺失": "SOP 没有把当前节点后的处理路径交代清楚。",
+          "【司机】个人行为（习惯抓人工）": "司机倾向直接找人工，而非继续自助链路。",
+          "机器人能力问题": "机器人识别、匹配或回答能力未覆盖当前诉求。"
+        }[reason];
+      }
+
+      function suggestionForReason(reason) {
+        return {
+          "【司机】信息缺失不足": "补齐违规原因、订单上下文、审核状态和可见字段解释。",
+          "【司机】自主操作受阻": "检查入口、按钮、材料提交和页面链路，增加可执行步骤。",
+          "【司机】规则/策略解释不足": "补充判责依据、规则口径和司机争议点的解释话术。",
+          "【司机】场景链路缺失": "明确当前状态、下一步动作、时间预期和可再次处理路径。",
+          "【司机】个人行为（习惯抓人工）": "优化首轮安抚和自助引导，减少直接抓人工的动机。",
+          "机器人能力问题": "补充意图识别样本，修正 SOP 触发条件和兜底话术。"
+        }[reason];
+      }
+
+      function hasDriverFollowUpAfterLastBot(messages) {
+        const lastBotIndex = messages.map((m) => m.speaker).lastIndexOf("bot");
+        return lastBotIndex >= 0 && messages.slice(lastBotIndex + 1).some((m) => m.speaker === "driver");
+      }
+
+      function renderParsedMessages(messages) {
+        els.messageCount.textContent = messages.length + " 条消息";
+        els.preview.className = "dialogue-list";
+        els.preview.innerHTML = messages.map((m) => `
+          <article class="bubble ${m.speaker}">
+            <span>${escapeHtml(m.roleLabel)}</span>
+            <p>${escapeHtml(m.text)}</p>
+          </article>
+        `).join("");
+      }
+
+      function renderResult(result) {
+        const statusClass = result.resolvedStatus === "未解决" ? "status-unresolved" : result.resolvedStatus === "已解决" ? "status-resolved" : "status-unknown";
+        els.result.className = "result-stack";
+        els.result.innerHTML = `
+          <div class="status-card ${statusClass}">
+            <div><span class="status-label">解决状态</span><strong>${result.resolvedStatus}</strong></div>
+            <div class="probability"><span>未解决概率</span><b>${result.unresolvedProbability}%</b></div>
+          </div>
+          <div class="summary-grid">
+            ${tile("倾向判断", result.judgementDirection)}
+            ${tile("置信度", result.confidence)}
+            ${tile("短结论", result.shortConclusion, true)}
+            ${tile("主因", result.primaryReason, true)}
+            ${tile("次因", result.secondaryReasons.length ? result.secondaryReasons.join(" / ") : "暂无", true)}
+          </div>
+          <div class="reason-list">
+            <div class="section-title"><span>原因卡片</span><small>${result.reasonJudgements.length} 项</small></div>
+            ${result.reasonJudgements.map((item) => `
+              <article class="reason-card">
+                <h3>${escapeHtml(item.reason)}</h3>
+                <p>${escapeHtml(item.judgement)}</p>
+                <ul>${item.evidence.map((e) => `<li>${escapeHtml(e)}</li>`).join("")}</ul>
+                <div class="suggestion">${escapeHtml(item.suggestion)}</div>
+              </article>
+            `).join("")}
+          </div>
+          <div class="logic-block">
+            <div class="section-title"><span>分析逻辑</span></div>
+            <ol>${result.analysisLogic.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ol>
+          </div>
+        `;
+      }
+
+      function tile(label, value, wide) {
+        return `<div class="info-tile ${wide ? "wide" : ""}"><span>${label}</span><strong>${escapeHtml(value)}</strong></div>`;
+      }
+
+      function chooseReview(isCorrect) {
+        state.reviewChoice = isCorrect;
+        els.correctBtn.className = isCorrect ? "choice-button selected" : "choice-button";
+        els.wrongBtn.className = isCorrect ? "choice-button" : "choice-button selected danger";
+        els.manualStatus.disabled = isCorrect;
+        els.manualReason.disabled = isCorrect;
+      }
+
+      function saveReview() {
+        if (!state.currentAnalysis || state.reviewChoice === null) return;
+        state.stats.reviewed += 1;
+        if (state.reviewChoice) state.stats.correct += 1;
+        else state.stats.incorrect += 1;
+        persistStats();
+        renderStats();
+        els.saveState.textContent = "人工确认已保存";
+      }
+
+      function enableReview(enabled) {
+        els.correctBtn.disabled = !enabled;
+        els.wrongBtn.disabled = !enabled;
+        els.comment.disabled = !enabled;
+        els.saveReviewBtn.disabled = !enabled;
+        els.manualStatus.disabled = true;
+        els.manualReason.disabled = true;
+        els.correctBtn.className = "choice-button";
+        els.wrongBtn.className = "choice-button";
+      }
+
+      function renderStats() {
+        const stats = state.stats;
+        els.todayCount.textContent = String(stats.total);
+        els.reviewStats.textContent = `总分析 ${stats.total} 条，已确认 ${stats.reviewed} 条，正确 ${stats.correct} 条，错误 ${stats.incorrect} 条`;
+        els.accuracy.textContent = stats.reviewed ? ((stats.correct / stats.reviewed) * 100).toFixed(1) + "%" : "-";
+      }
+
+      function persistStats() {
+        localStorage.setItem("sop-static-stats", JSON.stringify(state.stats));
+      }
+
+      function resetAll() {
+        state.currentAnalysis = null;
+        state.reviewChoice = null;
+        els.input.value = "";
+        updateCharCount();
+        els.messageCount.textContent = "0 条消息";
+        els.preview.className = "empty-state";
+        els.preview.textContent = "提交后会先把原始日志和 JSON 卡片解析成可读对话。";
+        els.result.className = "empty-result";
+        els.result.innerHTML = "<strong>等待提交</strong><span>右侧将展示解决状态、概率、主因和原因卡片。</span>";
+        els.error.innerHTML = "";
+        els.saveState.textContent = "";
+        enableReview(false);
+      }
+
+      function compact(text) {
+        return text.replace(/\s+/g, " ").slice(0, 240);
+      }
+
+      function escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, (char) => ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#039;"
+        }[char]));
+      }
+    </script>
+  </body>
+</html>
