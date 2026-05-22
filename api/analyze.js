@@ -4,6 +4,7 @@ const {
   normalizeAnalysisResult,
   parseConversation,
   parseJsonObject,
+  resolveDeepSeekModelName,
   scoreByRules
 } = require("./_shared");
 
@@ -43,6 +44,7 @@ module.exports = async (request, response) => {
     }
 
     const ruleResult = scoreByRules(parsedMessages);
+    const model = resolveDeepSeekModelName(process.env.DEEPSEEK_MODEL || "deepseek-v4-pro");
     const deepseekResponse = await fetch(`${process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com"}/chat/completions`, {
       method: "POST",
       headers: {
@@ -50,7 +52,7 @@ module.exports = async (request, response) => {
         Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`
       },
       body: JSON.stringify({
-        model: process.env.DEEPSEEK_MODEL || "deepseek-v4-pro",
+        model,
         response_format: { type: "json_object" },
         stream: false,
         max_tokens: 1800,
