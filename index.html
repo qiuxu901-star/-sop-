@@ -7,17 +7,18 @@
     <style>
       :root {
         color-scheme: light;
-        --bg: #f5f7f6;
+        --bg: #f6f8fb;
         --panel: #ffffff;
-        --ink: #17201b;
-        --muted: #66736c;
-        --line: #dce3df;
-        --soft: #eef3f0;
-        --green: #197b55;
-        --red: #c64235;
-        --amber: #9c6b12;
-        --blue: #256f96;
-        --shadow: 0 16px 44px rgba(23, 32, 27, 0.08);
+        --ink: #14213d;
+        --muted: #64748b;
+        --line: #d8e0ea;
+        --soft: #eef4ff;
+        --green: #16a34a;
+        --red: #dc2626;
+        --amber: #f97316;
+        --blue: #1769e0;
+        --blue-soft: #eaf3ff;
+        --shadow: 0 16px 40px rgba(20, 33, 61, 0.08);
       }
 
       * {
@@ -29,6 +30,8 @@
         background: var(--bg);
         color: var(--ink);
         font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        height: 100vh;
+        overflow: hidden;
       }
 
       button,
@@ -48,8 +51,11 @@
       }
 
       .app-shell {
-        min-height: 100vh;
-        padding: 24px 24px 96px;
+        height: 100vh;
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        gap: 14px;
+        padding: 16px;
       }
 
       .topbar {
@@ -57,8 +63,13 @@
         display: flex;
         gap: 20px;
         justify-content: space-between;
-        margin: 0 auto 20px;
-        max-width: 1480px;
+        margin: 0 auto;
+        max-width: 1440px;
+        width: 100%;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px 18px;
       }
 
       .eyebrow {
@@ -101,7 +112,8 @@
       }
 
       .metric {
-        padding: 10px 12px;
+        min-height: 52px;
+        padding: 8px 12px;
       }
 
       .metric span,
@@ -122,16 +134,21 @@
 
       .workspace {
         display: grid;
-        gap: 20px;
-        grid-template-columns: minmax(360px, 0.95fr) minmax(480px, 1.25fr);
+        gap: 12px;
+        grid-template-columns: minmax(380px, 0.92fr) minmax(520px, 1.08fr);
         margin: 0 auto;
-        max-width: 1480px;
+        max-width: 1440px;
+        width: 100%;
+        min-height: 0;
       }
 
       .panel {
         box-shadow: var(--shadow);
-        min-height: calc(100vh - 178px);
-        padding: 18px;
+        min-height: 0;
+        height: 100%;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
       }
 
       .panel-head {
@@ -148,9 +165,9 @@
         color: var(--ink);
         display: block;
         line-height: 1.55;
-        min-height: 240px;
+        height: 244px;
         padding: 14px;
-        resize: vertical;
+        resize: none;
         width: 100%;
       }
 
@@ -181,8 +198,8 @@
       }
 
       .primary-button {
-        background: var(--green);
-        border: 1px solid var(--green);
+        background: var(--blue);
+        border: 1px solid var(--blue);
         color: #ffffff;
         margin-top: 12px;
         width: 100%;
@@ -195,7 +212,7 @@
       }
 
       .ghost-button {
-        background: var(--soft);
+        background: var(--blue-soft);
         border: 1px solid var(--line);
         color: var(--ink);
         text-decoration: none;
@@ -205,6 +222,10 @@
         border-top: 1px solid var(--line);
         margin-top: 18px;
         padding-top: 16px;
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-height: 0;
       }
 
       .section-title {
@@ -236,7 +257,8 @@
       .empty-result {
         flex-direction: column;
         gap: 8px;
-        min-height: 360px;
+        min-height: 0;
+        height: 100%;
       }
 
       .empty-result strong {
@@ -248,7 +270,8 @@
         display: flex;
         flex-direction: column;
         gap: 10px;
-        max-height: 420px;
+        flex: 1;
+        min-height: 0;
         overflow: auto;
         padding-right: 4px;
       }
@@ -274,18 +297,21 @@
       }
 
       .bubble.driver {
-        background: #edf6f2;
-        border-color: #cfe3d9;
+        background: #f0fdf4;
+        border-color: #bbf7d0;
       }
 
       .bubble.bot {
-        background: #f7f9fb;
+        background: #f8fafc;
       }
 
       .result-stack {
         display: flex;
         flex-direction: column;
         gap: 14px;
+        height: 100%;
+        overflow: auto;
+        padding-right: 4px;
       }
 
       .status-card {
@@ -293,7 +319,7 @@
         border-radius: 8px;
         display: flex;
         justify-content: space-between;
-        padding: 16px;
+        padding: 18px 20px;
       }
 
       .status-card strong {
@@ -304,18 +330,18 @@
       }
 
       .status-unresolved {
-        background: #fff1ef;
-        border: 1px solid #f0c7c1;
+        background: #fff8ed;
+        border: 1px solid #f7bd65;
       }
 
       .status-resolved {
-        background: #eef8f3;
-        border: 1px solid #cce7da;
+        background: #ecfdf5;
+        border: 1px solid #86efac;
       }
 
       .status-unknown {
-        background: #fff8e9;
-        border: 1px solid #ead9ae;
+        background: #fff8ed;
+        border: 1px solid #fdba74;
       }
 
       .probability {
@@ -380,7 +406,7 @@
       }
 
       .suggestion {
-        background: var(--soft);
+        background: #f8fafc;
         border-radius: 8px;
         color: #274139;
         font-size: 13px;
@@ -395,20 +421,18 @@
 
       .review-bar {
         align-items: center;
-        background: rgba(255, 255, 255, 0.94);
+        background: var(--panel);
         border: 1px solid var(--line);
         border-radius: 8px;
-        bottom: 18px;
         box-shadow: var(--shadow);
         display: grid;
-        gap: 14px;
-        grid-template-columns: 290px 1fr auto;
-        left: 24px;
+        gap: 12px;
+        grid-template-columns: 260px 1fr auto;
         margin: 0 auto;
-        max-width: 1480px;
+        max-width: 1440px;
+        width: 100%;
         padding: 12px;
-        position: fixed;
-        right: 24px;
+        position: relative;
       }
 
       .review-bar strong,
@@ -435,9 +459,9 @@
       }
 
       .choice-button.selected {
-        background: #eef8f3;
-        border-color: var(--green);
-        color: var(--green);
+        background: var(--blue-soft);
+        border-color: var(--blue);
+        color: var(--blue);
       }
 
       .choice-button.selected.danger {
@@ -457,7 +481,7 @@
       }
 
       .saved-text {
-        color: var(--green) !important;
+        color: var(--blue) !important;
         font-weight: 800;
         white-space: nowrap;
       }
@@ -474,7 +498,9 @@
 
       @media (max-width: 980px) {
         .app-shell {
-          padding: 16px 16px 190px;
+          height: auto;
+          overflow: auto;
+          padding: 16px;
         }
 
         .topbar,
@@ -494,8 +520,6 @@
 
         .review-bar {
           grid-template-columns: 1fr;
-          left: 16px;
-          right: 16px;
         }
 
         .review-controls {
