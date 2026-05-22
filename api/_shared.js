@@ -391,7 +391,15 @@ function scoreByRules(parsedMessages) {
 }
 
 function buildAnalysisPrompt({ conversationText, parsedMessages, ruleResult }) {
-  const fewShotExamples = selectFewShotExamples(conversationText, parsedMessages);
+  const fewShotExamples = selectFewShotExamples(conversationText, parsedMessages, 2);
+  const compactRuleHint = [
+    `resolvedStatus=${ruleResult.resolvedStatus}`,
+    `unresolvedProbability=${ruleResult.unresolvedProbability}`,
+    `judgementDirection=${ruleResult.judgementDirection}`,
+    `primaryReason=${ruleResult.primaryReason}`,
+    `evidence=${(ruleResult.evidence || []).slice(0, 3).join(" | ")}`
+  ].join("\n");
+  const compactDialogue = parsedMessages.map((message) => `${message.roleLabel}：${message.text}`).join("\n");
   return `
 ${ruleSummary}
 
@@ -422,13 +430,10 @@ ${fewShotExamples
 8. “再次申诉”“审核中”“3个工作日内通知”都不能单独决定结论，必须结合是否触发正确违规链路、是否还有继续追问一起判断。
 
 本地规则预判：
-${JSON.stringify(ruleResult, null, 2)}
+${compactRuleHint}
 
 对话式解析：
-${parsedMessages.map((message) => `${message.roleLabel}：${message.text}`).join("\n")}
-
-原始会话：
-${conversationText}
+${compactDialogue}
 `.trim();
 }
 
