@@ -1,3 +1,8 @@
+const {
+  selectFewShotExamples,
+  violationCalibrationInsights
+} = require("./_calibration");
+
 const reasonEnum = [
   "【司机】信息缺失不足",
   "【司机】自主操作受阻",
@@ -224,7 +229,7 @@ function renderViolationCard(card, index) {
 
 function analyzeHardRule(conversationText, parsedMessages) {
   const combined = `${conversationText}\n${parsedMessages.map((message) => message.text).join("\n")}`;
-  if (!/转人工|人工客服|人工服务|接入人工|联系人工|人工坐席|真人客服|我要人工/.test(combined)) {
+  if (!/转人工|转接|正在转接|人工客服|人工服务|接入人工|联系人工|人工坐席|真人客服|我要人工/.test(combined)) {
     return null;
   }
 
@@ -263,6 +268,18 @@ function scoreByRules(parsedMessages) {
   const driverText = parsedMessages.filter((message) => message.speaker === "driver").map((message) => message.text).join("\n");
   const botText = parsedMessages.filter((message) => message.speaker === "bot").map((message) => message.text).join("\n");
   const allText = parsedMessages.map((message) => message.text).join("\n");
+  const repeatedDriverQuestion = hasRepeatedDriverQuestion(parsedMessages);
+  const driverFollowUpAfterLastBot = hasDriverFollowUpAfterLastBot(parsedMessages);
+  const violationFlowTriggered = /请确认咨询信息|请确认您要咨询的违规信息|违规卡片|司机选择违规记录/.test(allText);
+  const selectedViolationRecord = /司机选择违规记录/.test(allText);
+  const disputeSignal = /不认可|再次申诉|复议|申诉|驳回|判责不对|不是故意|严重堵车|违规处置不认可|处罚不认可/.test(driverText);
+  const processQuerySignal = /进度|什么时候|多久|什么时候能看到|没看到进度|审核结果|审核到哪/.test(driverText);
+  const noAppealChanceSignal = /无申诉次数|没有申诉次数|无法申诉|没有季度次数|超时无法申诉/.test(allText);
+  const noViolationMismatchSignal =
+    /没有查询到您有违规信息/.test(botText) && /违规|判责|扣费|处置|申诉|投诉/.test(driverText);
+  const auditOnlyReply =
+    /审核|3 个工作日|3个工作日|关注.*APP|APP.*通知|申诉处理中|通知/.test(botText) &&
+    !/规则|原因|为什么|依据|入口|材料|通知书|视频|证据/.test(botText);
 
   let score = 50;
   const evidence = [];
@@ -280,11 +297,11 @@ function scoreByRules(parsedMessages) {
     logic.push(`-${points}：${reason}`);
   };
 
-  if (/不认可|再次申诉|复议|申诉|驳回|判责不对|不是故意|严重堵车/.test(driverText)) {
+  if (disputeSignal) {
     add(20, "司机表达不认可、再次申诉或复议诉求。");
   }
 
-  if (hasRepeatedDriverQuestion(parsedMessages)) {
+  if (repeatedDriverQuestion) {
     add(20, "司机重复追问同一问题。");
   }
 
@@ -300,6 +317,22 @@ function scoreByRules(parsedMessages) {
     add(10, "关键字段或上下文信息不足。");
   }
 
+  if (violationFlowTriggered && repeatedDriverQuestion) {
+    add(25, "违规SOP已触发，但司机仍继续追问，说明核心疑问没有闭环。");
+  }
+
+  if (noAppealChanceSignal) {
+    add(25, "会话出现无申诉次数或无法申诉，司机缺少可执行处理路径。");
+  }
+
+  if (noViolationMismatchSignal) {
+    add(20, "司机在问判责/申诉问题，但机器人回复无违规信息，存在场景错配。");
+  }
+
+  if (auditOnlyReply && disputeSignal) {
+    add(15, "司机在质疑判责，但机器人主要回复审核中，未正面回应争议点。");
+  }
+
   if (/规则|原因|依据|影响|如何解除|如何申诉|下一步|入口|材料|审核结果/.test(botText)) {
     subtract(20, "机器人提供规则解释或下一步信息。");
   }
@@ -308,8 +341,20 @@ function scoreByRules(parsedMessages) {
     subtract(15, "SOP 能识别并触发判责相关结构化卡片。");
   }
 
-  if (!hasDriverFollowUpAfterLastBot(parsedMessages)) {
+  if (!driverFollowUpAfterLastBot) {
     subtract(10, "机器人最终回复后司机没有继续追问。");
+  }
+
+  if (violationFlowTriggered && !repeatedDriverQuestion && !driverFollowUpAfterLastBot) {
+    subtract(22, "违规SOP已正确触发，且司机在最终回复后没有继续追问。");
+  }
+
+  if (selectedViolationRecord && auditOnlyReply && !repeatedDriverQuestion && !driverFollowUpAfterLastBot) {
+    subtract(28, "司机已选中具体违规记录，机器人明确说明申诉处理中，且当前轮没有继续追问。");
+  }
+
+  if (auditOnlyReply && processQuerySignal && !repeatedDriverQuestion && !driverFollowUpAfterLastBot) {
+    subtract(12, "司机主要在问进度，机器人已说明审核时效与通知方式。");
   }
 
   const probability = clamp(score, 5, 95);
@@ -346,18 +391,35 @@ function scoreByRules(parsedMessages) {
 }
 
 function buildAnalysisPrompt({ conversationText, parsedMessages, ruleResult }) {
+  const fewShotExamples = selectFewShotExamples(conversationText, parsedMessages);
   return `
 ${ruleSummary}
+
+以下是基于历史人工样本（仅保留违规/判责场景）提炼出的校准洞察，请优先用于提高判断准确性：
+${violationCalibrationInsights.map((item, index) => `${index + 1}. ${item}`).join("\n")}
+
+以下是与你当前会话最相关的人工校准示例，请学习它们的判断边界，而不是只抓关键词：
+${fewShotExamples
+  .map(
+    (example, index) => `示例${index + 1}
+- 适用模式：${example.conversationPattern}
+- 人工结论：${example.manualResult.resolvedStatus} / ${example.manualResult.judgementDirection}
+- 人工短结论：${example.manualResult.shortConclusion}
+- 学习原因：${example.reason}`
+  )
+  .join("\n")}
 
 请你基于以上规则说明，对下面这条会话做结构化分析。
 
 补充约束：
 1. 先遵守规则说明，再参考本地规则预判。
-2. 如果证据不足，不要乱猜，要明确输出 无法确定 或带方向性的偏向判断。
-3. 输出必须是 JSON 对象，不能输出 markdown、解释性前后缀或代码块。
-4. 主因必须是 6 类原因之一，次因最多 2 个。
-5. 短结论必须短，不要长段落。
-6. 关键证据必须引用会话里真实出现的内容，不要编造。
+2. 再结合人工校准洞察和相关示例，学习“什么情况下同样的关键词代表已解决，什么情况下代表未解决”。
+3. 如果证据不足，不要乱猜，要明确输出 无法确定 或带方向性的偏向判断。
+4. 输出必须是 JSON 对象，不能输出 markdown、解释性前后缀或代码块。
+5. 主因必须是 6 类原因之一，次因最多 2 个。
+6. 短结论必须短，不要长段落。
+7. 关键证据必须引用会话里真实出现的内容，不要编造。
+8. “再次申诉”“审核中”“3个工作日内通知”都不能单独决定结论，必须结合是否触发正确违规链路、是否还有继续追问一起判断。
 
 本地规则预判：
 ${JSON.stringify(ruleResult, null, 2)}
@@ -423,7 +485,7 @@ function parseJsonObject(text) {
 function classifyReason(text) {
   const target = text || "";
   if (/人工|真人/.test(target) && !/规则|申诉|违规|判责|原因|无法|找不到/.test(target)) return "【司机】个人行为（习惯抓人工）";
-  if (/无法|不能|找不到|打不开|提交不了|上传不了|入口|按钮|页面|操作/.test(target)) return "【司机】自主操作受阻";
+  if (/无法|不能|找不到|打不开|提交不了|上传不了|入口|按钮|页面/.test(target)) return "【司机】自主操作受阻";
   if (/不知道|没说|没看到|查询不到|信息|字段|订单|时间|缺失|不足/.test(target)) return "【司机】信息缺失不足";
   if (/下一步|再次申诉|补充材料|审核|流程|链路|路径|怎么处理/.test(target)) return "【司机】场景链路缺失";
   if (/不认可|违规|判责|处罚|规则|策略|申诉|驳回|扣分|扣钱|为什么|严重堵车|非故意/.test(target)) return "【司机】规则/策略解释不足";
@@ -492,6 +554,12 @@ function pickReason(value, fallback) {
   return typeof value === "string" && reasonEnum.includes(value) ? value : fallback;
 }
 
+function resolveDeepSeekModelName(model) {
+  const raw = String(model || "").trim();
+  if (!raw) return "deepseek-v4-pro";
+  return raw.replace(/\[(?:1m|128k|64k)\]$/i, "");
+}
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -514,5 +582,6 @@ module.exports = {
   parseConversation,
   parseJsonObject,
   analyzeHardRule,
+  resolveDeepSeekModelName,
   scoreByRules
 };
