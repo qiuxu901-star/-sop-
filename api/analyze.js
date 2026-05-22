@@ -8,6 +8,11 @@ const {
   scoreByRules
 } = require("./_shared");
 
+function summarizeUpstreamError(text) {
+  const compact = String(text || "").replace(/\s+/g, " ").trim();
+  return compact ? compact.slice(0, 500) : "empty upstream response";
+}
+
 module.exports = async (request, response) => {
   response.setHeader("Access-Control-Allow-Origin", "*");
   response.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -53,43 +58,72 @@ module.exports = async (request, response) => {
 
     const ruleResult = scoreByRules(parsedMessages);
     const model = resolveDeepSeekModelName(process.env.DEEPSEEK_MODEL || "deepseek-v4-pro");
-    const deepseekResponse = await fetch(`${process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com"}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`
-      },
-      body: JSON.stringify({
-        model,
-        response_format: { type: "json_object" },
-        stream: false,
-        max_tokens: 1800,
-        messages: [
-          {
-            role: "system",
-            content: "你是客服 SOP 未解决原因分析器。必须先学习规则说明，再按结构化 JSON 输出结论。"
-          },
-          {
-            role: "user",
-            content: buildAnalysisPrompt({
-              conversationText,
-              parsedMessages,
-              ruleResult
-            })
-          }
-        ]
-      })
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    let deepseekResponse;
+
+    try {
+      deepseekResponse = await fetch(`${process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com"}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`
+        },
+        body: JSON.stringify({
+          model,
+          response_format: { type: "json_object" },
+          stream: false,
+          max_tokens: 1800,
+          messages: [
+            {
+              role: "system",
+              content: "你是客服 SOP 未解决原因分析器。必须先学习规则说明，再按结构化 JSON 输出结论。"
+            },
+            {
+              role: "user",
+              content: buildAnalysisPrompt({
+                conversationText,
+                parsedMessages,
+                ruleResult
+              })
+            }
+          ]
+        }),
+        signal: controller.signal
+      });
+    } catch (error) {
+      clearTimeout(timeout);
+      if (error && error.name === "AbortError") {
+        return response.status(504).json({
+          error: "DeepSeek 调用超时。",
+          details: "上游模型在 20 秒内未返回结果，请稍后重试。"
+        });
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (!deepseekResponse.ok) {
       const errorText = await deepseekResponse.text();
       return response.status(502).json({
         error: "DeepSeek 调用失败。",
-        details: errorText.slice(0, 500)
+        details: summarizeUpstreamError(errorText)
       });
     }
 
-    const payload = await deepseekResponse.json();
+    const responseText = await deepseekResponse.text();
+    let payload;
+
+    try {
+      payload = JSON.parse(responseText);
+    } catch (error) {
+      return response.status(502).json({
+        error: "DeepSeek 返回内容不是有效 JSON。",
+        details: summarizeUpstreamError(responseText)
+      });
+    }
+
     const content = payload?.choices?.[0]?.message?.content;
 
     if (!content) {
