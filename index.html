@@ -695,9 +695,18 @@
           })
         });
 
-        const payload = await response.json();
+        const rawText = await response.text();
+        let payload;
+
+        try {
+          payload = rawText ? JSON.parse(rawText) : {};
+        } catch (error) {
+          throw new Error(`服务端返回非 JSON 内容：${rawText.slice(0, 180) || "empty response"}`);
+        }
+
         if (!response.ok) {
-          throw new Error(payload.error || "Analyze failed");
+          const details = payload.details ? ` ${payload.details}` : "";
+          throw new Error(`${payload.error || "Analyze failed"}${details}`);
         }
 
         if (payload.source === "deepseek") {
