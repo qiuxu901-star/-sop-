@@ -57,6 +57,16 @@ module.exports = async (request, response) => {
     }
 
     const ruleResult = scoreByRules(parsedMessages);
+    const probability = Number(ruleResult.unresolvedProbability || 0);
+
+    if (probability <= 30 || probability >= 70) {
+      return response.status(200).json({
+        source: "rule",
+        parsedMessages,
+        ...ruleResult
+      });
+    }
+
     const model = resolveDeepSeekModelName(process.env.DEEPSEEK_MODEL || "deepseek-v4-pro");
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000);
@@ -130,7 +140,18 @@ module.exports = async (request, response) => {
       return response.status(502).json({ error: "DeepSeek 未返回有效分析结果。" });
     }
 
-    const normalized = normalizeAnalysisResult(parseJsonObject(content), ruleResult);
+    let parsedContent;
+
+    try {
+      parsedContent = parseJsonObject(content);
+    } catch (error) {
+      return response.status(502).json({
+        error: "DeepSeek 返回了非标准 JSON 结果。",
+        details: error instanceof Error ? summarizeUpstreamError(error.message) : "invalid model json"
+      });
+    }
+
+    const normalized = normalizeAnalysisResult(parsedContent, ruleResult);
 
     return response.status(200).json({
       source: "deepseek",
