@@ -73,7 +73,7 @@ module.exports = async (request, response) => {
           model,
           response_format: { type: "json_object" },
           stream: false,
-          max_tokens: 1800,
+          max_tokens: 900,
           messages: [
             {
               role: "system",
