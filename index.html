@@ -609,10 +609,11 @@
 智能客服:"{\\"type\\":\\"imRichText\\",\\"data\\":{\\"content\\":\\"师傅，被判责心里肯定不好受，您先别着急！您提交的违规申诉平台正在努力审核呢，平台规定会在 3 个工作日内完成，等审核结果出来，就会通过 APP 给您及时发通知。\\"}}"`;
       const REMOTE_API_ORIGIN = "https://sop-livid.vercel.app";
 
+      const defaultStats = { total: 0, reviewed: 0, correct: 0, incorrect: 0 };
       const state = {
         currentAnalysis: null,
         reviewChoice: null,
-        stats: JSON.parse(localStorage.getItem("sop-static-stats") || '{"total":0,"reviewed":0,"correct":0,"incorrect":0}')
+        stats: loadStoredStats()
       };
 
       const els = {
@@ -661,19 +662,24 @@
         const raw = els.input.value.trim();
         els.error.innerHTML = "";
         els.saveState.textContent = "";
+        els.analyzeBtn.disabled = true;
+        els.analyzeBtn.textContent = "分析中...";
 
         if (!raw) {
           els.error.innerHTML = '<div class="error-banner">请输入单条历史会话后再提交分析。</div>';
+          els.analyzeBtn.disabled = false;
+          els.analyzeBtn.textContent = "提交并分析";
           return;
         }
 
         els.submitState.textContent = "分析中";
-        analyzeRemote(raw).catch(() => {
+        analyzeRemote(raw).catch((error) => {
           const parsedMessages = parseConversation(raw);
           const hard = analyzeHardRule(raw, parsedMessages);
           const result = hard || scoreByRules(parsedMessages);
+          const details = error && error.message ? `服务端返回：${escapeHtml(error.message)}` : "未获取到明确错误信息。";
           els.error.innerHTML =
-            '<div class="error-banner">服务端 DeepSeek 分析暂不可用，当前已切换到本地规则兜底结果。</div>';
+            `<div class="error-banner">服务端 DeepSeek 分析暂不可用，当前已切换到本地规则兜底结果。<br />${details}</div>`;
           applyAnalysisResult(parsedMessages, result);
         });
       }
@@ -719,6 +725,8 @@
         enableReview(true);
         renderStats();
         els.submitState.textContent = "就绪";
+        els.analyzeBtn.disabled = false;
+        els.analyzeBtn.textContent = "提交并分析";
       }
 
       function parseConversation(input) {
@@ -1000,7 +1008,28 @@
       }
 
       function persistStats() {
-        localStorage.setItem("sop-static-stats", JSON.stringify(state.stats));
+        try {
+          localStorage.setItem("sop-static-stats", JSON.stringify(state.stats));
+        } catch (error) {
+          console.warn("Local stats storage unavailable.", error);
+        }
+      }
+
+      function loadStoredStats() {
+        try {
+          const raw = localStorage.getItem("sop-static-stats");
+          if (!raw) return { ...defaultStats };
+          const parsed = JSON.parse(raw);
+          return {
+            total: Number(parsed.total || 0),
+            reviewed: Number(parsed.reviewed || 0),
+            correct: Number(parsed.correct || 0),
+            incorrect: Number(parsed.incorrect || 0)
+          };
+        } catch (error) {
+          console.warn("Local stats storage unavailable.", error);
+          return { ...defaultStats };
+        }
       }
 
       function resetAll() {
