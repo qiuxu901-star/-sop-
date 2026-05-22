@@ -607,6 +607,7 @@
 智能客服:"{\\"type\\":\\"agentCardList\\",\\"data\\":{\\"content\\":\\"师傅您好，请确认您要咨询的违规信息\\",\\"buttons\\":[{\\"name\\":\\"以上均不是\\"}],\\"cardList\\":[{\\"cardType\\":\\"violation\\",\\"channelBusinessId\\":\\"G1631590235\\",\\"disposeReasonName\\":\\"未接乘客\\",\\"complaintStatus\\":0,\\"startAddress\\":\\"上善花园酒店\\",\\"endAddress\\":\\"锦江都城酒店\\"}]}}"
 司机:"{\\"type\\":\\"violation\\",\\"data\\":{\\"channelBusinessId\\":\\"G1631590235\\",\\"disposeReasonName\\":\\"未接乘客\\",\\"complaintStatus\\":0}}"
 智能客服:"{\\"type\\":\\"imRichText\\",\\"data\\":{\\"content\\":\\"师傅，被判责心里肯定不好受，您先别着急！您提交的违规申诉平台正在努力审核呢，平台规定会在 3 个工作日内完成，等审核结果出来，就会通过 APP 给您及时发通知。\\"}}"`;
+      const REMOTE_API_ORIGIN = "https://sop-livid.vercel.app";
 
       const state = {
         currentAnalysis: null,
@@ -678,7 +679,7 @@
       }
 
       async function analyzeRemote(raw) {
-        const response = await fetch("/api/analyze", {
+        const response = await fetch(getAnalyzeEndpoint(), {
           method: "POST",
           headers: {
             "Content-Type": "application/json"
@@ -699,6 +700,13 @@
         }
 
         applyAnalysisResult(payload.parsedMessages, payload);
+      }
+
+      function getAnalyzeEndpoint() {
+        if (window.location.protocol === "file:") {
+          return `${REMOTE_API_ORIGIN}/api/analyze`;
+        }
+        return "/api/analyze";
       }
 
       function applyAnalysisResult(parsedMessages, result) {
@@ -798,7 +806,7 @@
 
       function analyzeHardRule(raw, messages) {
         const combined = raw + "\n" + messages.map((m) => m.text).join("\n");
-        if (!/转人工|人工客服|人工服务|接入人工|联系人工|人工坐席|真人客服|我要人工/.test(combined)) return null;
+        if (!/转人工|转接|正在转接|人工客服|人工服务|接入人工|联系人工|人工坐席|真人客服|我要人工/.test(combined)) return null;
         const driverIntent = [...messages].reverse().find((m) => m.speaker === "driver" && m.text.trim());
         const primaryReason = classifyReason(driverIntent ? driverIntent.text : "");
         return {
